@@ -1,0 +1,18 @@
+name: Run on Commit
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  run-on-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run basic command
+        run: echo "Pipeline triggered on commit"
