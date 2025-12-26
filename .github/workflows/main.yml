@@ -1,25 +1,70 @@
-name: Run on Commits on mian branch
-
+name: CI-CD Pipeline with SonarQube, Docker, Kubernetes
 
 on:
   push:
     branches:
       - main
-      
+     
 
 jobs:
-  maven-build:
+  build-scan-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Checkout source code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      # Setup Java 11
+      - name: Setup Java 11
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '11'
-          distribution: 'temurin'
 
-      - name: Build with Maven
-        run: mvn clean install
+      # Cache Maven dependencies
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: maven-${{ hashFiles('**/pom.xml') }}
+
+      # Maven Build
+      - name: Maven Build
+        run: mvn clean verify
+
+      # SonarQube Scan
+      - name: SonarQube Scan
+        run: |
+          mvn sonar:sonar \
+            -Dsonar.projectKey=my-java-app \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      # Docker Login
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # Docker Build & Push
+      - name: Docker Build and Push
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/java-app:${{ github.sha }} .
+          docker push ${{ secrets.DOCKER_USERNAME }}/java-app:${{ github.sha }}
+
+      # Setup kubectl
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+
+      # Configure Kubernetes access
+      - name: Configure Kubeconfig
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > kubeconfig
+          export KUBECONFIG=$PWD/kubeconfig
+
+      # Deploy to Kubernetes
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/java-app \
+          java-app=${{ secrets.DOCKER_USERNAME }}/java-app:${{ github.sha }}
